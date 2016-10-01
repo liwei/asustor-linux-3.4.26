@@ -498,6 +498,15 @@ config MAX8997_MUIC
 	  Maxim MAX8997 PMIC.
 	  The MAX8997 MUIC is a USB port accessory detector and switch.
 
+config CE_MAILBOX
+        tristate "Mailbox support for Intel CE2600 platform"
+        depends on ARCH_GEN3
+        depends on HW_MUTEXES
+        default y
+         ---help---
+          This is a simple mailbox driver support for communication between NPCPU and APPCPU processor
+          If unsure, say Y.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
