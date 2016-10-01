@@ -73,7 +73,11 @@ void pcie_clear_root_pme_status(struct pci_dev *dev)
 	pci_write_config_dword(dev, rtsta_pos, rtsta);
 }
 
+#ifdef CONFIG_ARCH_GEN3
+int pcie_portdrv_restore_config(struct pci_dev *dev)
+#else
 static int pcie_portdrv_restore_config(struct pci_dev *dev)
+#endif
 {
 	int retval;
 

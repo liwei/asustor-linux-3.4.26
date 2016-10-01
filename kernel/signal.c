@@ -2488,6 +2488,12 @@ EXPORT_SYMBOL(sigprocmask);
 EXPORT_SYMBOL(block_all_signals);
 EXPORT_SYMBOL(unblock_all_signals);
 
+/*
+ * The following code is for Intel Media SOC Gen3 base support.
+*/
+#ifdef CONFIG_ARCH_GEN3
+EXPORT_SYMBOL(kill_pid_info);   /* Export this symbol for graphic driver */
+#endif
 
 /*
  * System call entry points.

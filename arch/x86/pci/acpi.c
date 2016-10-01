@@ -15,8 +15,16 @@ struct pci_root_info {
 	struct list_head *resources;
 	int busnum;
 };
-
+	/*
+	 * The following code is for Intel Media SOC SMP support. Since kernel can not get a correct ACPI data from CEFDK,
+	 * thus by default we force to ignore host bridge windows from ACPI
+	 */
+#if defined(CONFIG_ARCH_GEN3) & defined(CONFIG_SMP)
+static bool pci_use_crs = false;
+#else
 static bool pci_use_crs = true;
+#endif
+
 
 static int __init set_use_crs(const struct dmi_system_id *id)
 {

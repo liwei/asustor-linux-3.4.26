@@ -7,6 +7,14 @@
  * Detailed information is available in Documentation/DocBook/genericirq
  *
  */
+/******************************************************************
+
+ Includes Intel Corporation's changes/modifications dated: 03/2013.
+ Changed/modified portions - Copyright(c) 2013, Intel Corporation.
+
+******************************************************************/
+
+
 #include <linux/irq.h>
 #include <linux/slab.h>
 #include <linux/export.h>
@@ -247,6 +255,11 @@ struct irq_desc irq_desc[NR_IRQS] __cacheline_aligned_in_smp = {
 		.lock		= __RAW_SPIN_LOCK_UNLOCKED(irq_desc->lock),
 	}
 };
+#ifdef CONFIG_ARCH_GEN3
+#ifdef CONFIG_SMP
+EXPORT_SYMBOL(irq_desc);
+#endif
+#endif
 
 int __init early_irq_init(void)
 {
@@ -274,6 +287,11 @@ struct irq_desc *irq_to_desc(unsigned int irq)
 {
 	return (irq < NR_IRQS) ? irq_desc + irq : NULL;
 }
+#ifdef CONFIG_ARCH_GEN3
+#ifdef CONFIG_SMP
+EXPORT_SYMBOL(irq_to_desc);
+#endif
+#endif
 
 static void free_desc(unsigned int irq)
 {
@@ -297,6 +315,9 @@ static int irq_expand_nr_irqs(unsigned int nr)
 {
 	return -ENOMEM;
 }
+#ifdef CONFIG_ARCH_GEN3
+EXPORT_SYMBOL_GPL(irq_free_descs);
+#endif
 
 #endif /* !CONFIG_SPARSE_IRQ */
 

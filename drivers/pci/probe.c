@@ -212,17 +212,20 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 			struct resource *res, unsigned int pos)
 {
 	u32 l, sz, mask;
+#ifndef CONFIG_ARCH_GEN3
 	u16 orig_cmd;
+#endif
 	struct pci_bus_region region;
 
 	mask = type ? PCI_ROM_ADDRESS_MASK : ~0;
 
+#ifndef CONFIG_ARCH_GEN3
 	if (!dev->mmio_always_on) {
 		pci_read_config_word(dev, PCI_COMMAND, &orig_cmd);
 		pci_write_config_word(dev, PCI_COMMAND,
 			orig_cmd & ~(PCI_COMMAND_MEMORY | PCI_COMMAND_IO));
 	}
-
+#endif
 	res->name = pci_name(dev);
 
 	pci_read_config_dword(dev, pos, &l);
@@ -230,9 +233,10 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 	pci_read_config_dword(dev, pos, &sz);
 	pci_write_config_dword(dev, pos, l);
 
+#ifndef CONFIG_ARCH_GEN3
 	if (!dev->mmio_always_on)
 		pci_write_config_word(dev, PCI_COMMAND, orig_cmd);
-
+#endif
 	/*
 	 * All bits set in sz means the device isn't working properly.
 	 * If the BAR isn't implemented, all bits must be 0.  If it's a

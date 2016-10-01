@@ -452,6 +452,9 @@ out:
 		goto out_eoi;
 	goto out_unlock;
 }
+#ifdef CONFIG_ARCH_GEN3
+EXPORT_SYMBOL_GPL(handle_fasteoi_irq);
+#endif
 
 /**
  *	handle_edge_irq - edge type IRQ handler
@@ -665,6 +668,9 @@ irq_set_chip_and_handler_name(unsigned int irq, struct irq_chip *chip,
 	irq_set_chip(irq, chip);
 	__irq_set_handler(irq, handle, 0, name);
 }
+#ifdef CONFIG_ARCH_GEN3
+EXPORT_SYMBOL_GPL(irq_set_chip_and_handler_name);
+#endif
 
 void irq_modify_status(unsigned int irq, unsigned long clr, unsigned long set)
 {
