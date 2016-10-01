@@ -555,4 +555,11 @@ config BLK_DEV_RBD
 
 	  If unsure, say N.
 
+config SPECTRA_NAND_FLASH
+        tristate "NAND FLASH support for Intel CE4100 platform"
+	default y
+         ---help---
+          This is the Denali NAND flash block driver for Intel CE4100 platform.
+          Say Y or M.
+
 endif # BLK_DEV
