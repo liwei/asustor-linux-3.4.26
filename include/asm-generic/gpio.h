@@ -103,6 +103,10 @@ struct gpio_chip {
 						unsigned offset);
 	int			(*get)(struct gpio_chip *chip,
 						unsigned offset);
+#ifdef CONFIG_ARCH_GEN3
+	int			(*get_multi_function)(struct gpio_chip *chip, unsigned offset);
+#endif
+
 	int			(*direction_output)(struct gpio_chip *chip,
 						unsigned offset, int value);
 	int			(*set_debounce)(struct gpio_chip *chip,
@@ -110,6 +114,9 @@ struct gpio_chip {
 
 	void			(*set)(struct gpio_chip *chip,
 						unsigned offset, int value);
+#ifdef CONFIG_ARCH_GEN3
+	int			(*set_multi_function)(struct gpio_chip *chip, unsigned offset, int fn_num);
+#endif
 
 	int			(*to_irq)(struct gpio_chip *chip,
 						unsigned offset);
@@ -161,6 +168,14 @@ extern int gpio_set_debounce(unsigned gpio, unsigned debounce);
 extern int gpio_get_value_cansleep(unsigned gpio);
 extern void gpio_set_value_cansleep(unsigned gpio, int value);
 
+#ifdef CONFIG_ARCH_GEN3
+extern int gpio_get_multi_function(unsigned gpio);
+extern int gpio_set_multi_function(unsigned gpio, int value);
+
+typedef void *gpio_irq_handle;
+extern gpio_irq_handle  gpio_request_irq(unsigned gpio, void (*func)(void *data), unsigned long flags, const char *name, void *data);
+extern int gpio_free_irq(gpio_irq_handle handle, void *data);
+#endif
 
 /* A platform's <asm/gpio.h> code may want to inline the I/O calls when
  * the GPIO is constant and refers to some always-present controller,

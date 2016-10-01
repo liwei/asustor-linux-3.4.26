@@ -161,11 +161,16 @@ config GPIO_VR41XX
 	help
 	  Say yes here to support the NEC VR4100 series General-purpose I/O Uint
 
+config GPIO_INTELCE
+	tristate "INTELCE GPIO support"
+	depends on GPIOLIB && ARCH_GEN3
+	help
+	  Say yes here to support GPIO functionality of IntelCE soc I/O controller.
+
+
 config GPIO_SCH
 	tristate "Intel SCH/TunnelCreek GPIO"
-	depends on PCI && X86
-	select MFD_CORE
-	select LPC_SCH
+	depends on GPIOLIB && PCI && ARCH_GEN3
 	help
 	  Say yes here to support GPIO interface on Intel Poulsbo SCH
 	  or Intel Tunnel Creek processor.

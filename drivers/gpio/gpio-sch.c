@@ -96,9 +96,9 @@ static int sch_gpio_core_direction_out(struct gpio_chip *gc,
 {
 	u8 curr_dirs;
 	unsigned short offset, bit;
-
+#ifndef CONFIG_ARCH_GEN3
 	sch_gpio_core_set(gc, gpio_num, val);
-
+#endif
 	spin_lock(&gpio_lock);
 
 	offset = CGIO + gpio_num / 8;
@@ -109,6 +109,9 @@ static int sch_gpio_core_direction_out(struct gpio_chip *gc,
 		outb(curr_dirs & ~(1 << bit), gpio_ba + offset);
 
 	spin_unlock(&gpio_lock);
+#ifdef CONFIG_ARCH_GEN3
+	sch_gpio_core_set(gc, gpio_num, val);
+#endif
 	return 0;
 }
 
@@ -188,6 +191,9 @@ static struct gpio_chip sch_gpio_resume = {
 static int __devinit sch_gpio_probe(struct platform_device *pdev)
 {
 	struct resource *res;
+#ifdef CONFIG_ARCH_GEN3
+	int gpio_base;
+#endif
 	int err, id;
 
 	id = pdev->id;
@@ -203,12 +209,22 @@ static int __devinit sch_gpio_probe(struct platform_device *pdev)
 
 	gpio_ba = res->start;
 
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	gpio_base = res->start;
+
 	switch (id) {
 		case PCI_DEVICE_ID_INTEL_SCH_LPC:
+#ifdef CONFIG_ARCH_GEN3
+			sch_gpio_core.base = gpio_base;
+#else
 			sch_gpio_core.base = 0;
+#endif
 			sch_gpio_core.ngpio = 10;
-
+#ifdef CONFIG_ARCH_GEN3
+			sch_gpio_resume.base = gpio_base + 10;
+#else
 			sch_gpio_resume.base = 10;
+#endif
 			sch_gpio_resume.ngpio = 4;
 
 			/*

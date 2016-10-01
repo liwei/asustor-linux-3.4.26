@@ -363,7 +363,6 @@ static int gpio_setup_irq(struct gpio_desc *desc, struct device *dev,
 	if (test_bit(FLAG_TRIG_RISE, &gpio_flags))
 		irq_flags |= test_bit(FLAG_ACTIVE_LOW, &desc->flags) ?
 			IRQF_TRIGGER_FALLING : IRQF_TRIGGER_RISING;
-
 	if (!value_sd) {
 		value_sd = sysfs_get_dirent(dev->kobj.sd, NULL, "value");
 		if (!value_sd) {
@@ -475,6 +474,56 @@ found:
 
 static DEVICE_ATTR(edge, 0644, gpio_edge_show, gpio_edge_store);
 
+#ifdef CONFIG_ARCH_GEN3
+static ssize_t gpio_multi_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	const struct gpio_desc	*desc = dev_get_drvdata(dev);
+	unsigned		gpio = desc - gpio_desc;
+	ssize_t			status;
+
+	mutex_lock(&sysfs_lock);
+
+	if (!test_bit(FLAG_EXPORT, &desc->flags)) {
+		status = -EIO;
+	} else {
+		int value;
+
+		value = gpio_get_multi_function(gpio);
+		status = sprintf(buf, "%d\n", value);
+	}
+
+	mutex_unlock(&sysfs_lock);
+	return status;
+}
+
+static ssize_t gpio_multi_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	const struct gpio_desc	*desc = dev_get_drvdata(dev);
+	unsigned		gpio = desc - gpio_desc;
+	ssize_t			status;
+
+	mutex_lock(&sysfs_lock);
+
+	if (!test_bit(FLAG_EXPORT, &desc->flags))
+		status = -EIO;
+	else {
+		long		value;
+
+		status = strict_strtol(buf, 0, &value);
+		if (status == 0) {
+			gpio_set_multi_function(gpio, value);
+			status = size;
+		}
+	}
+
+	mutex_unlock(&sysfs_lock);
+	return status;
+}
+
+static const DEVICE_ATTR(multi, 0644, gpio_multi_show, gpio_multi_store);
+#endif
 static int sysfs_set_active_low(struct gpio_desc *desc, struct device *dev,
 				int value)
 {
@@ -752,6 +801,10 @@ int gpio_export(unsigned gpio, bool direction_may_change)
 				status = device_create_file(dev,
 						&dev_attr_edge);
 
+#ifdef CONFIG_ARCH_GEN3
+			if (!status && (gpio_get_multi_function(gpio) >= 0))
+				status = device_create_file(dev, &dev_attr_multi);
+#endif
 			if (status != 0)
 				device_unregister(dev);
 		} else
@@ -1742,6 +1795,77 @@ void gpio_set_value_cansleep(unsigned gpio, int value)
 }
 EXPORT_SYMBOL_GPL(gpio_set_value_cansleep);
 
+#ifdef CONFIG_ARCH_GEN3
+/*  Some gpio pin supports multi function usage, the following two functions are used to configure
+ *  GPIO mux register.
+ */
+
+int gpio_get_multi_function(unsigned gpio)
+{
+	struct gpio_chip	*chip;
+
+	chip = gpio_to_chip(0);
+	return chip->get_multi_function ? chip->get_multi_function(chip, gpio) : -1;
+}
+EXPORT_SYMBOL_GPL(gpio_get_multi_function);
+
+int gpio_set_multi_function(unsigned gpio, int value)
+{
+	struct gpio_chip	*chip;
+
+	chip = gpio_to_chip(0);
+	return chip->set_multi_function ? chip->set_multi_function(chip, gpio, value) : -1;
+}
+EXPORT_SYMBOL_GPL(gpio_set_multi_function);
+
+struct gpio_irq_internal{
+  unsigned int gpio;
+  unsigned int irq;
+  void (*handler)(void *data);
+  void *data;
+ };
+
+static irqreturn_t gpio_shim_irq_handler(int irq, void *data)
+{
+	struct gpio_irq_internal *internal = (struct gpio_irq_internal *)data;
+	internal->handler(internal->data);
+	return IRQ_HANDLED;
+}
+
+gpio_irq_handle  gpio_request_irq(unsigned gpio, void (*func)(void *data), unsigned long flags, const char *name, void *data)
+{
+	unsigned int irq;
+	struct gpio_irq_internal *internal;
+
+	internal = kzalloc(sizeof(*internal), GFP_KERNEL);
+	if (NULL == internal)
+		return NULL;
+	irq = gpio_to_irq(gpio);
+	internal->gpio = gpio;
+	internal->irq = irq;
+	internal->handler = func;
+	internal->data = data;
+
+	if (request_irq(irq, gpio_shim_irq_handler, flags, name, internal)) {
+		memset(internal, 0, sizeof(*internal));
+		kfree(internal);
+		return NULL;
+	}
+	return (gpio_irq_handle)internal;
+}
+EXPORT_SYMBOL_GPL(gpio_request_irq);
+
+int gpio_free_irq(gpio_irq_handle handle, void *data)
+{
+	struct gpio_irq_internal *internal = (struct gpio_irq_internal *)handle;
+
+	free_irq(internal->irq, internal);
+	memset(internal, 0, sizeof(*internal));
+	kfree(internal);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(gpio_free_irq);
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 
