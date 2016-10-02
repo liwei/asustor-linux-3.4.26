@@ -154,6 +154,7 @@ struct tty_ldisc_ops {
 struct tty_ldisc {
 	struct tty_ldisc_ops *ops;
 	atomic_t users;
+	wait_queue_head_t wq_idle;
 };
 
 #define TTY_LDISC_MAGIC	0x5403
