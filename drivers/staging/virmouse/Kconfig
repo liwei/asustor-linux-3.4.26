@@ -1,0 +1,5 @@
+config VIRMOUSE
+	tristate "VirMouse"
+	depends on STAGING
+	default y
+	---help---
