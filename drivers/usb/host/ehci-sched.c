@@ -33,6 +33,12 @@
  * It keeps track of every ITD (or SITD) that's linked, and holds enough
  * pre-calculated schedule data to make appending to the queue be quick.
  */
+/******************************************************************
+
+ Includes Intel Corporation's changes/modifications dated: 03/2013.
+ Changed/modified portions - Copyright(c) 2013, Intel Corporation.
+
+******************************************************************/
 
 static int ehci_get_frame (struct usb_hcd *hcd);
 
@@ -2409,13 +2415,16 @@ restart:
 				 * No need to check for activity unless the
 				 * frame is current.
 				 */
+#ifdef CONFIG_GEN3_USB
+                                 if (live && (q.sitd->hw_results & SITD_ACTIVE(ehci))) {
+#else
 				if (((frame == clock_frame) ||
 				     (((frame + 1) & (ehci->periodic_size - 1))
 				      == clock_frame))
 				    && live
 				    && (q.sitd->hw_results &
 					SITD_ACTIVE(ehci))) {
-
+#endif
 					incomplete = true;
 					q_p = &q.sitd->sitd_next;
 					hw_p = &q.sitd->hw_next;

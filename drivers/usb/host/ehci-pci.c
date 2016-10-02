@@ -18,6 +18,16 @@
  * Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+
+/******************************************************************
+
+ Includes Intel Corporation's changes/modifications dated: 03/2013.
+ Changed/modified portions - Copyright(c) 2013, Intel Corporation.
+
+******************************************************************/
+
+
+
 #ifndef CONFIG_PCI
 #error "This file is PCI bus glue.  CONFIG_PCI must be defined."
 #endif
@@ -53,6 +63,16 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 	u8			rev;
 	u32			temp;
 	int			retval;
+
+#ifdef CONFIG_GEN3_USB
+	/*
+	 * CE5300 USB controller has some extensions similar with Moorestown
+	 * such as host mode control, device speed report and power management.
+	 * So set ehci->has_hostpc to utilize the support code for Moorestown.
+	*/
+	if((pdev->device == 0x101) && (pdev->revision >= 0x6))
+		ehci->has_hostpc = 1;
+#endif
 
 	switch (pdev->vendor) {
 	case PCI_VENDOR_ID_TOSHIBA_2:
@@ -147,6 +167,9 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 		break;
 	case PCI_VENDOR_ID_TDI:
 		if (pdev->device == PCI_DEVICE_ID_TDI_EHCI) {
+#ifdef CONFIG_GEN3_USB
+			ehci->has_lpm = 0;
+#endif
 			hcd->has_tt = 1;
 			tdi_reset(ehci);
 		}
