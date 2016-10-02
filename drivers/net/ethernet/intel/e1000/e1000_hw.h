@@ -25,6 +25,10 @@
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
 *******************************************************************************/
+/*******************************************************************************
+  Includes Intel Corporation's changes/modifications dated: 03/2013.
+  Changed/modified portions - Copyright @ 2013, Intel Corporation.
+*******************************************************************************/
 
 /* e1000_hw.h
  * Structures, enums, and macros for the MAC
@@ -214,6 +218,13 @@ typedef enum {
 	e1000_phy_igp,
 	e1000_phy_8211,
 	e1000_phy_8201,
+#ifdef CONFIG_ARCH_GEN3
+	e1000_phy_8201e,
+	e1000_phy_8211d,
+	e1000_phy_8211e,
+    e1000_phy_8201fr,
+	e1000_phy_lan8720a,
+#endif
 	e1000_phy_undefined = 0xFF
 } e1000_phy_type;
 
@@ -1347,12 +1358,24 @@ struct e1000_hw_stats {
 	u64 icrxdmtc;
 	u64 icrxoc;
 };
-
+#ifdef CONFIG_ARCH_GEN3
+enum phy_mode {
+	REAL_PHY = 0,
+	FAKE_PHY_INTERNAL,
+	FAKE_PHY_EXTERNAL,
+	INVALID_PHY,
+};
+#define MARVAL_PHY_ADDRESS 0x4
+#endif
 /* Structure containing variables used by the shared code (e1000_hw.c) */
 struct e1000_hw {
 	u8 __iomem *hw_addr;
 	u8 __iomem *flash_address;
+#ifdef CONFIG_ARCH_GEN3
+	volatile void __iomem *ce4100_gbe_mdio_base_virt;
+#else
 	void __iomem *ce4100_gbe_mdio_base_virt;
+#endif
 	e1000_mac_type mac_type;
 	e1000_phy_type phy_type;
 	u32 phy_init_script;
@@ -1375,6 +1398,9 @@ struct e1000_hw {
 	u32 phy_id;
 	u32 phy_revision;
 	u32 phy_addr;
+#ifdef CONFIG_ARCH_GEN3
+	enum phy_mode phy_mode;
+#endif
 	u32 original_fc;
 	u32 txcw;
 	u32 autoneg_failed;
@@ -1433,6 +1459,9 @@ struct e1000_hw {
 	bool leave_av_bit_off;
 	bool bad_tx_carr_stats_fd;
 	bool has_smbus;
+#ifdef CONFIG_ARCH_GEN3
+	bool cegbe_is_link_up;
+#endif
 };
 
 #define E1000_EEPROM_SWDPIN0   0x0001	/* SWDPIN 0 EEPROM Value */
@@ -2252,6 +2281,10 @@ struct e1000_host_command_info {
 #define EEPROM_FLASH_VERSION          0x0032
 #define EEPROM_CHECKSUM_REG           0x003F
 
+#ifdef CONFIG_ARCH_GEN3
+#define EEPROM_CE4100_FAKE_LENGTH     0x80
+#endif
+
 #define E1000_EEPROM_CFG_DONE         0x00040000	/* MNG config cycle done */
 #define E1000_EEPROM_CFG_DONE_PORT_1  0x00080000	/* ...for second port */
 
@@ -2517,6 +2550,9 @@ struct e1000_host_command_info {
 #define PHY_1000T_CTRL   0x09	/* 1000Base-T Control Reg */
 #define PHY_1000T_STATUS 0x0A	/* 1000Base-T Status Reg */
 #define PHY_EXT_STATUS   0x0F	/* Extended Status Reg */
+#ifdef CONFIG_ARCH_GEN3
+#define PHY_TEST_REG     0x19 /* Test Register */
+#endif
 
 #define MAX_PHY_REG_ADDRESS        0x1F	/* 5 bit address bus (0-0x1F) */
 #define MAX_PHY_MULTI_PAGE_REG     0xF	/* Registers equal on all pages */
@@ -2601,6 +2637,9 @@ struct e1000_host_command_info {
 #define MII_CR_SPEED_SELECT_LSB 0x2000	/* bits 6,13: 10=1000, 01=100, 00=10 */
 #define MII_CR_LOOPBACK         0x4000	/* 0 = normal, 1 = loopback */
 #define MII_CR_RESET            0x8000	/* 0 = normal, 1 = PHY reset */
+#ifdef CONFIG_ARCH_GEN3
+#define RMII_MODE_SET           0x0200  /* 0 = MII Mode, 1 = RMII Mode */
+#endif
 
 /* PHY Status Register */
 #define MII_SR_EXTENDED_CAPS     0x0001	/* Extended register capabilities */
@@ -2930,9 +2969,32 @@ struct e1000_host_command_info {
 #define L1LXT971A_PHY_ID   0x001378E0
 
 #define RTL8211B_PHY_ID    0x001CC910
+
+#ifdef CONFIG_ARCH_GEN3
+#define RTL8211B_PHY_REV_ID     0b0010//
+#endif
+
 #define RTL8201N_PHY_ID    0x8200
 #define RTL_PHY_CTRL_FD    0x0100 /* Full duplex.0=half; 1=full */
+
+#ifdef CONFIG_ARCH_GEN3
+#define RTL_PHY_CTRL_SPD_100    0x2000 /* Force 100Mb */
+#else
 #define RTL_PHY_CTRL_SPD_100    0x200000 /* Force 100Mb */
+#endif
+
+#ifdef CONFIG_ARCH_GEN3
+#define RTL8201E_PHY_ID     0x001CC810
+#define RTL8211D_PHY_ID     0x001CC910//It's the same as RTL8211B
+#define RTL8211D_PHY_REV_ID     0b0100
+#define RTL8211E_PHY_ID     0x001CC910//It's the same as RTL8211B
+#define RTL8211E_PHY_REV_ID     0b0101
+
+#define RTL8201FR_PHY_ID     0x001CC810
+#define RTL8201FR_PHY_REV_ID    0b0110
+
+#define LAN8720A_PHY_ID		 0x0007C0F0
+#endif
 
 /* Bits...
  * 15-5: page
@@ -3108,5 +3170,10 @@ struct e1000_host_command_info {
 #define AUTONEG_ADVERTISE_SPEED_DEFAULT 0x002F	/* Everything but 1000-Half */
 #define AUTONEG_ADVERTISE_10_100_ALL    0x000F	/* All 10/100 speeds */
 #define AUTONEG_ADVERTISE_10_ALL        0x0003	/* 10Mbps Full & Half speeds */
+
+#ifdef ASUSTOR_PATCH
+#define PHY_SSC_ENABLE_MASK 0xFFFB
+#define PHY_SSC_DISBLE_MASK 0x0004
+#endif
 
 #endif /* _E1000_HW_H_ */

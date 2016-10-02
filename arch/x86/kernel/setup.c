@@ -456,6 +456,11 @@ static void __init parse_setup_data(void)
 		case SETUP_BOARD_TYPE:
 			intelce_set_board_type(readl(data->data));
 			break;
+#ifdef CONFIG_E1000
+		case SETUP_GMAC_PHY_MODE:
+			set_gmac_phy_mode(readl(data->data));
+			break;
+#endif
 #endif
 		default:
 			break;

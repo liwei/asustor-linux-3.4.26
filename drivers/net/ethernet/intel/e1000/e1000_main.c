@@ -26,13 +26,31 @@
 
 *******************************************************************************/
 
+/*******************************************************************************
+  Includes Intel Corporation's changes/modifications dated: 02/2012.
+  Changed/modified portions - Copyright @ 2012, Intel Corporation.
+*******************************************************************************/
+#define ASUSTOR_PATCH_E1000_IO
+
 #include "e1000.h"
 #include <net/ip6_checksum.h>
 #include <linux/io.h>
 #include <linux/prefetch.h>
 #include <linux/bitops.h>
 #include <linux/if_vlan.h>
+#ifdef ASUSTOR_PATCH_E1000_IO
+#include <linux/proc_fs.h>
+#endif
 
+
+#ifdef CONFIG_ARCH_GEN3
+static const char *phy_mode_name[] = {
+"Real Phy Mode",
+"Internal Fake Phy Mode",
+"External Fake Phy Mode",
+"Invalid Phy Mode",
+};
+#endif
 char e1000_driver_name[] = "e1000";
 static char e1000_driver_string[] = "Intel(R) PRO/1000 Network Driver";
 #define DRV_VERSION "7.3.21-k8-NAPI"
@@ -221,6 +239,121 @@ MODULE_VERSION(DRV_VERSION);
 static int debug = -1;
 module_param(debug, int, 0);
 MODULE_PARM_DESC(debug, "Debug level (0=none,...,16=all)");
+
+#ifdef ASUSTOR_PATCH_E1000_IO
+#define MAX_REG       100
+
+static struct e1000_adapter *proc_adapter;
+
+static int write_proc(struct file *file, const char __user *buf,
+                       unsigned long count, void *data)
+{
+	char num[16], *end = NULL;
+	struct e1000_hw *hw = &proc_adapter->hw;
+	int iReg = -1, iWriteFlag = 0;
+	u16 iData;
+	s32 ret_val;
+	if (!count) {
+        printk("count is 0\n");
+        return 0;
+    }
+	if (count > (sizeof(num) - 1)) {
+        printk("input is too large\n");
+        return -EINVAL;
+    }
+	if (copy_from_user(num, buf, count)) {
+        printk("copy from user failed\n");
+        return -EFAULT;
+    }
+	//printk("copy from user %s\n",num);
+	iReg = simple_strtol(num,&end,10);
+	if(NULL != end && '\n' != end[0]){
+		//printk("end = %s", end);
+		end = end+1;
+		if('\n' != end[0] && '\0' != end[0]){
+			iData = simple_strtol(end,NULL,16);
+			iWriteFlag = 1;
+		}
+	}
+	if(iReg < 0 || iReg > MAX_REG){
+		printk("Register %d not exist\n", iReg);
+		return count;
+	}
+	if(1 == iWriteFlag && (iData < 0 || iData > 0xffff)){
+		printk("Data %x out of range\n", iData);
+		return count;
+	}
+	if(1 == iWriteFlag)
+		printk("Write Reg %d Data %x\n", iReg, iData);
+	else
+		printk("Set Current Reg %d\n", iReg);
+	*(uint32_t*) data = iReg;
+	if(1 == iWriteFlag){
+		ret_val = e1000_write_phy_reg(hw, iReg, iData);
+		if (ret_val)
+			printk("Write Reg %d Data %x failed!\n", iReg, iData);
+	}
+
+    return count;
+}
+
+static int read_proc(char *page, char **start, off_t off,
+                       int count, int *eof, void *data)
+{
+    uint32_t curReg;
+	u16 test_reg;
+	s32 ret_val;
+	struct e1000_hw *hw = &proc_adapter->hw;
+	char *p, *np;
+	p = np = page;
+    curReg = *(uint32_t*) data;
+
+	//printk("reading register %d\n", curReg);
+	if(curReg <0 || curReg > MAX_REG)
+		printk("register %d not exist\n", curReg);
+	ret_val = e1000_read_phy_reg(hw, curReg, &test_reg);
+	if (ret_val){
+		printk("reading register %d failed\n", curReg);
+		return 0;
+	}
+	//printk("Register [%d] Data [%4x]", curReg, test_reg);
+	np += sprintf(p, "Register [%d] Data [0x%x]\n", curReg, test_reg);
+	*eof = 1;
+    return (np - page);
+}
+
+static uint32_t *lines;
+
+void e1000_create_sysfs(void)
+{
+	struct proc_dir_entry *ent;
+    lines = kzalloc(sizeof(uint32_t), GFP_KERNEL);
+    if (!lines) {
+        printk("no mem\n");
+        return;
+    }
+    *lines = 28;
+
+    ent = create_proc_entry("e1000_io", S_IFREG | S_IRWXU, NULL);
+    if (!ent) {
+        printk("create proc failed\n");
+        kfree(lines);
+    } else {
+        ent->write_proc = write_proc;
+        ent->read_proc = read_proc;
+        ent->data = lines;
+    }
+	return;
+}
+
+void e1000_remove_sysfs(void)
+{
+	if (lines) {
+        kfree(lines);
+    }
+    remove_proc_entry("e1000_io", NULL);
+}
+#endif
 
 /**
  * e1000_get_hw_dev - return device
@@ -733,6 +866,11 @@ static void e1000_dump_eeprom(struct e1000_adapter *adapter)
 	int i;
 	u16 csum_old, csum_new = 0;
 
+#ifdef CONFIG_ARCH_GEN3
+	if (adapter->hw.mac_type == e1000_ce4100)
+		eeprom.len = EEPROM_CE4100_FAKE_LENGTH;
+	else
+#endif
 	eeprom.len = ops->get_eeprom_len(netdev);
 	eeprom.offset = 0;
 
@@ -864,6 +1002,57 @@ static const struct net_device_ops e1000_netdev_ops = {
 	.ndo_set_features	= e1000_set_features,
 };
 
+#ifdef CONFIG_ARCH_GEN3
+static enum phy_mode g_phy_mode = INVALID_PHY;
+
+int set_gmac_phy_mode(enum phy_mode mode)
+{
+	g_phy_mode = mode;
+	return 0;
+}
+
+static enum phy_mode  detect_phy_mode(void)
+{
+	u32 phy_base; /* L2 switch bar 0 */
+	u8 __iomem *virt_base;
+	u32 reg_val; /* slave config register */
+	struct pci_dev *pdev;
+	enum phy_mode ret = REAL_PHY;
+
+	pdev = pci_get_device(0x8086, 0x08BD, NULL);
+	if(!pdev)
+		return ret;
+
+	pci_read_config_dword(pdev, 0x10, &phy_base);
+	pci_dev_put(pdev);
+
+	virt_base = ioremap_nocache(phy_base, 256 * 1024);
+	if(!virt_base)
+		return ret;
+
+	reg_val = readl(virt_base + 0x3A004);
+	iounmap(virt_base);
+
+	reg_val = (reg_val & 0b1011);
+
+    switch (reg_val) {
+		case 0b0000:
+		case 0b1000:
+	        ret = FAKE_PHY_EXTERNAL;
+			printk("GMUX setting: GMAC0 is connected to external switch (RGMII0)\n");
+			break;
+	    case 0b1011:
+			ret = FAKE_PHY_INTERNAL;
+			printk("GMUX setting: GMAC0 is connected to internal switch (RGMII0)\n");
+			break;
+		case 0b1001:
+		case 0b1010:
+		default:
+			break;
+	}
+	return ret;
+}
+#endif
 /**
  * e1000_init_hw_struct - initialize members of hw struct
  * @adapter: board private struct
@@ -879,6 +1068,9 @@ static int e1000_init_hw_struct(struct e1000_adapter *adapter,
 				struct e1000_hw *hw)
 {
 	struct pci_dev *pdev = adapter->pdev;
+#ifdef CONFIG_ARCH_GEN3
+	uint32_t socid;
+#endif
 
 	/* PCI config space info */
 	hw->vendor_id = pdev->vendor;
@@ -886,6 +1078,19 @@ static int e1000_init_hw_struct(struct e1000_adapter *adapter,
 	hw->subsystem_vendor_id = pdev->subsystem_vendor;
 	hw->subsystem_id = pdev->subsystem_device;
 	hw->revision_id = pdev->revision;
+#ifdef CONFIG_ARCH_GEN3
+	if (INVALID_PHY == g_phy_mode) {
+		intelce_get_soc_info(&socid, NULL);
+		if (CE2600_SOC_DEVICE_ID == socid) {
+			hw->phy_mode = detect_phy_mode();
+		} else {
+			hw->phy_mode = REAL_PHY;
+		}
+	} else {
+		hw->phy_mode = g_phy_mode;
+	}
+	printk("GBE working in %s\n", phy_mode_name[hw->phy_mode & 0x3]);
+#endif
 
 	pci_read_config_word(pdev, PCI_COMMAND, &hw->pci_cmd_word);
 
@@ -1212,7 +1417,6 @@ static int __devinit e1000_probe(struct pci_dev *pdev,
 				break;
 		}
 	}
-
 	/* reset the hardware with the new settings */
 	e1000_reset(adapter);
 
@@ -1239,6 +1443,10 @@ static int __devinit e1000_probe(struct pci_dev *pdev,
 	e_info(probe, "Intel(R) PRO/1000 Network Connection\n");
 
 	cards_found++;
+#ifdef ASUSTOR_PATCH_E1000_IO
+	proc_adapter = adapter;
+	e1000_create_sysfs();
+#endif
 	return 0;
 
 err_register:
@@ -1278,7 +1486,9 @@ static void __devexit e1000_remove(struct pci_dev *pdev)
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct e1000_adapter *adapter = netdev_priv(netdev);
 	struct e1000_hw *hw = &adapter->hw;
-
+#ifdef ASUSTOR_PATCH_E1000_IO
+	e1000_remove_sysfs();
+#endif
 	e1000_down_and_stop(adapter);
 	e1000_release_manageability(adapter);
 
@@ -2437,13 +2647,44 @@ static void e1000_watchdog(struct work_struct *work)
 	struct e1000_tx_ring *txdr = adapter->tx_ring;
 	u32 link, tctl;
 
+#ifdef         CONFIG_ARCH_GEN3
+	u16 link_up;
+	s32 ret_val;
+#endif
 	if (test_bit(__E1000_DOWN, &adapter->flags))
 		return;
 
 	mutex_lock(&adapter->mutex);
+#ifdef         CONFIG_ARCH_GEN3
+	/*
+	* Test the PHY for link status on Intel CE SoC MAC.
+	* If the link status is different than the last link status stored
+	* in the adapter->hw structure, then set hw->get_link_status = 1
+	*/
+	ret_val = e1000_read_phy_reg(&adapter->hw, PHY_STATUS, &link_up);
+	ret_val = e1000_read_phy_reg(&adapter->hw, PHY_STATUS, &link_up);
+	if (ret_val)
+		pr_info("Link status detection from PHY failed!\n");
+
+	link_up = ((link_up & MII_SR_LINK_STATUS) != 0);
+	if(link_up != adapter->hw.cegbe_is_link_up)
+		adapter->hw.get_link_status = true;
+	else
+		adapter->hw.get_link_status = false;
+#endif
 	link = e1000_has_link(adapter);
 	if ((netif_carrier_ok(netdev)) && link)
 		goto link_up;
+
+#ifdef CONFIG_ARCH_GEN3
+	if (hw->mac_type == e1000_ce4100) {
+		ret_val = e1000_read_phy_reg(&adapter->hw, PHY_STATUS, &link_up);
+		ret_val = e1000_read_phy_reg(&adapter->hw, PHY_STATUS, &link_up);
+		if (ret_val)
+			pr_info("Link status detection from PHY failed!\n");
+		link = ((link_up & MII_SR_LINK_STATUS) != 0);
+	}
+#endif
 
 	if (link) {
 		if (!netif_carrier_ok(netdev)) {
@@ -2477,6 +2718,7 @@ static void e1000_watchdog(struct work_struct *work)
 				txb2b = false;
 				/* maybe add some timeout factor ? */
 				break;
+
 			}
 
 			/* enable transmits in the hardware */
@@ -5018,6 +5260,42 @@ static int __e1000_shutdown(struct pci_dev *pdev, bool *enable_wake)
 	if (adapter->en_mng_pt)
 		*enable_wake = true;
 
+#ifdef CONFIG_ARCH_GEN3
+	/* enable WoL on the 8211E PHY */
+	if (*enable_wake == true) {
+		if (hw->phy_type == e1000_phy_8211e) {
+			u16 phy_wol = 0;
+			if (adapter->wol & E1000_WUFC_EX)
+				phy_wol |= 0x0400;
+			if (adapter->wol & E1000_WUFC_MC)
+				phy_wol |= 0x0200;
+			if (adapter->wol & E1000_WUFC_BC)
+				phy_wol |= 0x0100;
+			if (adapter->wol & E1000_WUFC_MAG)
+				phy_wol |= 0x1000;
+
+			/* Enable WoL for selected modes */
+			e1000_write_phy_reg(hw, 31, 0x0007);
+			e1000_write_phy_reg(hw, 30, 0x006d);
+			e1000_write_phy_reg(hw, 22, 0x9fff);
+			e1000_write_phy_reg(hw, 21, (u16) phy_wol);
+
+			/* Disable GMII/RGMII pad for power saving */
+			/* FIXME: for the S5 -> S0 wake to work, the BIOS
+			   needs to re-enable it */
+			// e1000_write_phy_reg(hw, 25, 0x0001);
+
+			/* Back to Page 0 */
+			e1000_write_phy_reg(hw, 31, 0x0000);
+
+			msleep(10);
+			e1000_phy_reset(hw);
+		}
+	}
+
+#endif
+
+
 	if (netif_running(netdev))
 		e1000_free_irq(adapter);
 
@@ -5075,6 +5353,27 @@ static int e1000_resume(struct pci_dev *pdev)
 		if (err)
 			return err;
 	}
+
+#ifdef CONFIG_ARCH_GEN3
+	/* disable WoL on the 8211E PHY */
+	if (hw->phy_type == e1000_phy_8211e) {
+
+		/* Disable WoL for selected modes */
+		e1000_write_phy_reg(hw, 31, 0x0007);
+		e1000_write_phy_reg(hw, 30, 0x006d);
+		e1000_write_phy_reg(hw, 22, 0x9fff);
+		e1000_write_phy_reg(hw, 21, 0x0000);
+
+		/* Reenable GMII/RGMII pad in case it was disabled */
+		// e1000_write_phy_reg(hw, 25, 0x0001);
+
+		/* Back to Page 0 */
+		e1000_write_phy_reg(hw, 31, 0x0000);
+		msleep(10);
+		e1000_phy_reset(hw);
+
+	}
+#endif
 
 	e1000_power_up_phy(adapter);
 	e1000_reset(adapter);
