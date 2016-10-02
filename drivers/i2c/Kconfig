@@ -24,6 +24,13 @@ menuconfig I2C
 
 if I2C
 
+config GEN3_I2C
+	bool "Intel Media SOC I2C support"
+	depends on I2C && ARCH_GEN3
+	default y
+	help
+          This option enables Intel Media SOC I2C support.
+
 config I2C_BOARDINFO
 	boolean
 	default y

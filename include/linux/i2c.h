@@ -381,6 +381,9 @@ struct i2c_adapter {
 
 	int timeout;			/* in jiffies */
 	int retries;
+#ifdef CONFIG_GEN3_I2C
+	unsigned int mode;
+#endif
 	struct device dev;		/* the adapter device */
 
 	int nr;

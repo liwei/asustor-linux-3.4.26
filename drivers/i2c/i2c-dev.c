@@ -438,6 +438,12 @@ static long i2cdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case I2C_SMBUS:
 		return i2cdev_ioctl_smbus(client, arg);
 
+#ifdef CONFIG_GEN3_I2C
+	case I2C_SET_MODE:
+		client->adapter->mode = arg;
+		break;
+#endif
+
 	case I2C_RETRIES:
 		client->adapter->retries = arg;
 		break;

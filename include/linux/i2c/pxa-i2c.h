@@ -65,6 +65,9 @@ struct i2c_pxa_platform_data {
 	unsigned int		slave_addr;
 	struct i2c_slave_client	*slave;
 	unsigned int		class;
+#ifdef CONFIG_GEN3_I2C
+	unsigned int		set_iwcr_flag :1;
+#endif
 	unsigned int		use_pio :1;
 	unsigned int		fast_mode :1;
 };

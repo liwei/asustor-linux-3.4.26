@@ -38,6 +38,7 @@
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/i2c/pxa-i2c.h>
+#include <linux/timer.h>
 
 #include <asm/irq.h>
 
@@ -48,12 +49,20 @@
 #define clk_enable(clk)		do { } while (0)
 #endif
 
+
 struct pxa_reg_layout {
 	u32 ibmr;
 	u32 idbr;
 	u32 icr;
 	u32 isr;
 	u32 isar;
+#ifdef CONFIG_GEN3_I2C
+	u32 iwcr;
+	u32 ismscr;
+	u32 ismlcr;
+	u32 ifmscr;
+	u32 ifmlcr;
+#endif
 };
 
 enum pxa_i2c_types {
@@ -61,6 +70,11 @@ enum pxa_i2c_types {
 	REGS_PXA3XX,
 	REGS_CE4100,
 };
+/*
+ * This reset work around is for some boards of CE4100 and CE4200
+ * And only availabe for the interrupt transfer mode
+ */
+#define I2C_RESET_WORKAROUND
 
 /*
  * I2C registers definitions
@@ -85,6 +99,13 @@ static struct pxa_reg_layout pxa_reg_layout[] = {
 		.idbr =	0x0c,
 		.icr =	0x00,
 		.isr =	0x04,
+#ifdef CONFIG_GEN3_I2C
+		.iwcr = 0x18,
+		.ismscr = 0x1c,
+		.ismlcr = 0x20,
+		.ifmscr = 0x24,
+		.ifmlcr = 0x28,
+#endif
 		/* no isar register */
 	},
 };
@@ -155,13 +176,27 @@ struct pxa_i2c {
 	void __iomem		*reg_icr;
 	void __iomem		*reg_isr;
 	void __iomem		*reg_isar;
-
+#ifdef CONFIG_GEN3_I2C
+	void __iomem		*reg_iwcr;
+	void __iomem		*reg_ismscr;
+	void __iomem		*reg_ismlcr;
+	void __iomem		*reg_ifmscr;
+	void __iomem		*reg_ifmlcr;
+#endif
 	unsigned long		iobase;
 	unsigned long		iosize;
 
 	int			irq;
+#ifdef CONFIG_GEN3_I2C
+	unsigned int		set_iwcr_flag :1;
+#endif
 	unsigned int		use_pio :1;
 	unsigned int		fast_mode :1;
+
+#ifdef I2C_RESET_WORKAROUND
+	struct timer_list       watchdog;
+	u8                      reset;
+#endif
 };
 
 #define _IBMR(i2c)	((i2c)->reg_ibmr)
@@ -170,6 +205,18 @@ struct pxa_i2c {
 #define _ISR(i2c)	((i2c)->reg_isr)
 #define _ISAR(i2c)	((i2c)->reg_isar)
 
+#ifdef CONFIG_GEN3_I2C
+#define _IWCR(i2c)      ((i2c)->reg_iwcr)
+#define _ISMSCR(i2c)    ((i2c)->reg_ismscr)
+#define _ISMLCR(i2c)    ((i2c)->reg_ismlcr)
+#define _IFMSCR(i2c)    ((i2c)->reg_ifmscr)
+#define _IFMLCR(i2c)    ((i2c)->reg_ifmlcr)
+
+#define I2C_SCL_SM_S_VALUE    (0xA3)
+#define I2C_SCL_SM_L_VALUE    (0xA3)
+#define I2C_SCL_FM_S_VALUE    (0x16)
+#define I2C_SCL_FM_L_VALUE    (0x33)
+#endif
 /*
  * I2C Slave mode address
  */
@@ -287,7 +334,11 @@ static inline int i2c_pxa_is_slavemode(struct pxa_i2c *i2c)
 
 static void i2c_pxa_abort(struct pxa_i2c *i2c)
 {
+#ifndef I2C_RESET_WORKAROUND
 	int i = 250;
+#else
+	int i = 5;
+#endif
 
 	if (i2c_pxa_is_slavemode(i2c)) {
 		dev_dbg(&i2c->adap.dev, "%s: called in slave mode\n", __func__);
@@ -461,9 +512,14 @@ static void i2c_pxa_reset(struct pxa_i2c *i2c)
 	writel(I2C_ISR_INIT, _ISR(i2c));
 	writel(readl(_ICR(i2c)) & ~ICR_UR, _ICR(i2c));
 
+#ifdef CONFIG_GEN3_I2C
+	/*set iwcr register to 0x12 on CE5300 platform other than CE5300 A0*/
+	if(i2c->set_iwcr_flag)
+		writel(0x12, _IWCR(i2c));
+#endif
+
 	if (i2c->reg_isar)
 		writel(i2c->slave_addr, _ISAR(i2c));
-
 	/* set control register values */
 	writel(I2C_ICR_INIT | (i2c->fast_mode ? ICR_FM : 0), _ICR(i2c));
 
@@ -475,8 +531,18 @@ static void i2c_pxa_reset(struct pxa_i2c *i2c)
 	i2c_pxa_set_slave(i2c, 0);
 
 	/* enable unit */
-	writel(readl(_ICR(i2c)) | ICR_IUE, _ICR(i2c));
+	writel(readl(_ICR(i2c)) | ICR_IUE | ICR_SCLE, _ICR(i2c));
 	udelay(100);
+#ifdef CONFIG_GEN3_I2C
+        /*
+         * Set the SCL high phase/low phase timing value
+         * according to the hardware recommendation.
+         */
+        writel(I2C_SCL_SM_S_VALUE, _ISMSCR(i2c));
+        writel(I2C_SCL_SM_L_VALUE, _ISMLCR(i2c));
+        writel(I2C_SCL_FM_S_VALUE, _IFMSCR(i2c));
+        writel(I2C_SCL_FM_L_VALUE, _IFMLCR(i2c));
+#endif
 }
 
 
@@ -731,13 +797,15 @@ static int i2c_pxa_do_xfer(struct pxa_i2c *i2c, struct i2c_msg *msg, int num)
 {
 	long timeout;
 	int ret;
-
+#ifdef I2C_RESET_WORKAROUND
+        int retry = 20;
+#endif
 	/*
 	 * Wait for the bus to become free.
 	 */
 	ret = i2c_pxa_wait_bus_not_busy(i2c);
 	if (ret) {
-		dev_err(&i2c->adap.dev, "i2c_pxa: timeout waiting for bus free\n");
+		printk(KERN_DEBUG "i2c_pxa-%d: timeout waiting for bus free\n", i2c->adap.nr);
 		goto out;
 	}
 
@@ -758,14 +826,35 @@ static int i2c_pxa_do_xfer(struct pxa_i2c *i2c, struct i2c_msg *msg, int num)
 	i2c->msg_ptr = 0;
 	i2c->irqlogidx = 0;
 
+	spin_unlock_irq(&i2c->lock);
+#ifdef I2C_RESET_WORKAROUND
+ restart:
+#endif
+	spin_lock_irq(&i2c->lock);
 	i2c_pxa_start_message(i2c);
-
+#ifdef I2C_RESET_WORKAROUND
+        i2c->watchdog.expires=jiffies + 2;
+        mod_timer(&i2c->watchdog,jiffies + 2);
+#endif
 	spin_unlock_irq(&i2c->lock);
 
 	/*
 	 * The rest of the processing occurs in the interrupt handler.
 	 */
+#ifndef I2C_RESET_WORKAROUND
 	timeout = wait_event_timeout(i2c->wait, i2c->msg_num == 0, HZ * 5);
+#else
+	timeout = HZ * 5;
+	timeout = wait_event_timeout(i2c->wait, i2c->msg_num == 0 || i2c->reset == 1, timeout);
+        if ((timeout == 0 || i2c->msg_num > 0) && retry > 0) {
+	  i2c_pxa_reset(i2c);
+	  i2c->reset = 0;
+	  retry--;
+	  printk(KERN_DEBUG "retry=%d\n",retry);
+	  goto restart;
+	}
+
+#endif
 	i2c_pxa_stop_message(i2c);
 
 	/*
@@ -787,13 +876,23 @@ static int i2c_pxa_pio_xfer(struct i2c_adapter *adap,
 {
 	struct pxa_i2c *i2c = adap->algo_data;
 	int ret, i;
+#ifdef CONFIG_GEN3_I2C
+	unsigned int former_mode = i2c->fast_mode;
 
+	i2c->fast_mode = (adap->mode ? 1 : 0);
+	/* reset i2c controller if mode changed */
+	if((former_mode != i2c->fast_mode)||(!(readl(_ICR(i2c)) & ICR_IUE)))
+		i2c_pxa_reset(i2c);
+#endif
+
+#ifndef CONFIG_GEN3_I2C
 	/* If the I2C controller is disabled we need to reset it
 	  (probably due to a suspend/resume destroying state). We do
 	  this here as we can then avoid worrying about resuming the
 	  controller before its users. */
 	if (!(readl(_ICR(i2c)) & ICR_IUE))
 		i2c_pxa_reset(i2c);
+#endif
 
 	for (i = adap->retries; i >= 0; i--) {
 		ret = i2c_pxa_do_pio_xfer(i2c, msgs, num);
@@ -822,8 +921,12 @@ static void i2c_pxa_master_complete(struct pxa_i2c *i2c, int ret)
 	i2c->msg_num = 0;
 	if (ret)
 		i2c->msg_idx = ret;
-	if (!i2c->use_pio)
-		wake_up(&i2c->wait);
+	if (!i2c->use_pio) {
+#ifdef I2C_RESET_WORKAROUND
+               del_timer(&i2c->watchdog);
+#endif
+	       wake_up(&i2c->wait);
+	}
 }
 
 static void i2c_pxa_irq_txempty(struct pxa_i2c *i2c, u32 isr)
@@ -998,6 +1101,10 @@ static irqreturn_t i2c_pxa_handler(int this_irq, void *dev_id)
 		if (isr & ISR_IRF)
 			i2c_pxa_slave_rxfull(i2c, isr);
 	} else if (i2c->msg) {
+#ifdef I2C_RESET_WORKAROUND
+               if (!i2c->use_pio)
+	                mod_timer(&i2c->watchdog,jiffies+2);
+#endif
 		if (isr & ISR_ITE)
 			i2c_pxa_irq_txempty(i2c, isr);
 		if (isr & ISR_IRF)
@@ -1014,6 +1121,15 @@ static int i2c_pxa_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num
 {
 	struct pxa_i2c *i2c = adap->algo_data;
 	int ret, i;
+
+#ifdef CONFIG_GEN3_I2C
+	unsigned int former_mode = i2c->fast_mode;
+
+	i2c->fast_mode = (adap->mode ? 1 : 0);
+	/* reset i2c controller if mode changed */
+	if(former_mode != i2c->fast_mode)
+		i2c_pxa_reset(i2c);
+#endif
 
 	for (i = adap->retries; i >= 0; i--) {
 		ret = i2c_pxa_do_xfer(i2c, msgs, num);
@@ -1089,9 +1205,36 @@ static int i2c_pxa_probe_pdata(struct platform_device *pdev,
 	if (plat) {
 		i2c->use_pio = plat->use_pio;
 		i2c->fast_mode = plat->fast_mode;
+#ifdef CONFIG_GEN3_I2C
+		i2c->adap.mode = plat->fast_mode;
+		i2c->set_iwcr_flag = plat->set_iwcr_flag;
+#endif
 	}
 	return 0;
 }
+
+#ifdef I2C_RESET_WORKAROUND
+static void watchdog_handler(unsigned long arg)
+{
+
+         struct pxa_i2c *i2c = (struct pxa_i2c *)arg;
+	 int count = 5;
+
+	 printk(KERN_DEBUG "in the Watchdog Handler\n");
+	/*
+         * check whether the i2c bus is really in dead lock status.
+         */
+	while (count-- && (readl(_ISR(i2c)) & (ISR_UB | ISR_IBB)) != 0) {
+	  mdelay(10);
+	}
+	if (!(readl(_ISR(i2c)) & (ISR_UB | ISR_IBB)))
+	  return;
+
+	i2c->reset = 1;
+	wake_up(&i2c->wait);
+	return;
+}
+#endif
 
 static int i2c_pxa_probe(struct platform_device *dev)
 {
@@ -1151,13 +1294,19 @@ static int i2c_pxa_probe(struct platform_device *dev)
 		ret = -EIO;
 		goto eremap;
 	}
-
 	i2c->reg_ibmr = i2c->reg_base + pxa_reg_layout[i2c_type].ibmr;
 	i2c->reg_idbr = i2c->reg_base + pxa_reg_layout[i2c_type].idbr;
 	i2c->reg_icr = i2c->reg_base + pxa_reg_layout[i2c_type].icr;
 	i2c->reg_isr = i2c->reg_base + pxa_reg_layout[i2c_type].isr;
 	if (i2c_type != REGS_CE4100)
 		i2c->reg_isar = i2c->reg_base + pxa_reg_layout[i2c_type].isar;
+#ifdef CONFIG_GEN3_I2C
+	i2c->reg_iwcr = i2c->reg_base + pxa_reg_layout[i2c_type].iwcr;
+	i2c->reg_ismscr = i2c->reg_base + pxa_reg_layout[i2c_type].ismscr;
+	i2c->reg_ismlcr = i2c->reg_base + pxa_reg_layout[i2c_type].ismlcr;
+	i2c->reg_ifmscr = i2c->reg_base + pxa_reg_layout[i2c_type].ifmscr;
+	i2c->reg_ifmlcr = i2c->reg_base + pxa_reg_layout[i2c_type].ifmlcr;
+#endif
 
 	i2c->iobase = res->start;
 	i2c->iosize = resource_size(res);
@@ -1191,7 +1340,16 @@ static int i2c_pxa_probe(struct platform_device *dev)
 	i2c->adap.algo_data = i2c;
 	i2c->adap.dev.parent = &dev->dev;
 #ifdef CONFIG_OF
+#ifndef CONFIG_GEN3_I2C
 	i2c->adap.dev.of_node = dev->dev.of_node;
+#endif
+#endif
+
+#ifdef I2C_RESET_WORKAROUND
+	i2c->reset = 0;
+	init_timer(&i2c->watchdog);
+	i2c->watchdog.function = &watchdog_handler;
+	i2c->watchdog.data = (unsigned long)i2c;
 #endif
 
 	ret = i2c_add_numbered_adapter(&i2c->adap);
@@ -1199,7 +1357,9 @@ static int i2c_pxa_probe(struct platform_device *dev)
 		printk(KERN_INFO "I2C: Failed to add bus\n");
 		goto eadapt;
 	}
+#ifndef CONFIG_GEN3_I2C
 	of_i2c_register_devices(&i2c->adap);
+#endif
 
 	platform_set_drvdata(dev, i2c);
 

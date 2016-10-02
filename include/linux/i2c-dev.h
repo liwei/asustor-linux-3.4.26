@@ -49,7 +49,12 @@
 #define I2C_RDWR	0x0707	/* Combined R/W transfer (one STOP only) */
 
 #define I2C_PEC		0x0708	/* != 0 to use PEC with SMBus */
+
 #define I2C_SMBUS	0x0720	/* SMBus transfer */
+
+#ifdef CONFIG_GEN3_I2C
+#define I2C_SET_MODE 0x0780
+#endif
 
 
 /* This is the structure as used in the I2C_SMBUS ioctl call */
