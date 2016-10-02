@@ -29,6 +29,11 @@
  *              --  Josef Siemes <jsiemes@web.de>, Aug 2002
  */
 
+/*******************************************************************************
+  Includes Intel Corporation's changes/modifications dated: 03/2013.
+  Changed/modified portions - Copyright(c) 2013, Intel Corporation.
+*******************************************************************************/
+
 #include <linux/types.h>
 #include <linux/string.h>
 #include <linux/kernel.h>
@@ -196,6 +201,9 @@ static bool __init ic_is_init_dev(struct net_device *dev)
 	return user_dev_name[0] ? !strcmp(dev->name, user_dev_name) :
 	    (!(dev->flags & IFF_LOOPBACK) &&
 	     (dev->flags & (IFF_POINTOPOINT|IFF_BROADCAST)) &&
+#if defined(CONFIG_ARCH_GEN3) && defined(CONFIG_UDMA)
+             strncmp(dev->name, "eth_udma", 8) &&
+#endif
 	     strncmp(dev->name, "dummy", 5));
 }
 
