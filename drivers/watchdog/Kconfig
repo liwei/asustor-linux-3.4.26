@@ -4,6 +4,7 @@
 
 menuconfig WATCHDOG
 	bool "Watchdog Timer Support"
+	default y
 	---help---
 	  If you say Y here (and to one of the following options) and create a
 	  character special file /dev/watchdog with major number 10 and minor
@@ -551,6 +552,17 @@ config I6300ESB_WDT
 	  To compile this driver as a module, choose M here: the
 	  module will be called i6300esb.
 
+config INTELCE_WDT
+        tristate "Intel Watchdog for CE2600"
+        depends on (X86 && PCI) && ARCH_GEN3
+	default m
+        ---help---
+          Hardware driver for the watchdog timer built into the Intel
+          CE2600 platform.
+
+          To compile this driver as a module, choose M here: the
+          module will be called intelce_wdt.
+
 config INTEL_SCU_WATCHDOG
 	bool "Intel SCU Watchdog for Mobile Platforms"
 	depends on X86_MRST
@@ -628,7 +640,6 @@ config HP_WATCHDOG
 config HPWDT_NMI_DECODING
 	bool "NMI decoding support for the HP ProLiant iLO2+ Hardware Watchdog Timer"
 	depends on HP_WATCHDOG
-	default y
 	help
 	  When an NMI occurs this feature will make the necessary BIOS calls to
 	  log the cause of the NMI.
