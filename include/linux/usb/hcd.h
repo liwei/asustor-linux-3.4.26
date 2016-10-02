@@ -166,6 +166,15 @@ struct usb_hcd {
 #define	HC_IS_RUNNING(state) ((state) & __ACTIVE)
 #define	HC_IS_SUSPENDED(state) ((state) & __SUSPEND)
 
+	u8		chip_id;
+#define HCD_CHIP_ID_UNKNOWN 0x00
+#define HCD_CHIP_ID_ETRON_EJ168 0x10
+#define HCD_CHIP_ID_ETRON_EJ188 0x20
+
+	unsigned int		chip_quirks;
+#define HCD_BATTERY_CHARGE_QUIRK (1 << 0)
+#define HCD_NO_STREAM_QUIRK (1 << 1)
+
 	/* more shared queuing code would be good; it should support
 	 * smarter scheduling, handle transaction translators, etc;
 	 * input size of periodic table to an interrupt scheduler.
@@ -342,6 +351,9 @@ struct hc_driver {
 		 */
 	int	(*update_device)(struct usb_hcd *, struct usb_device *);
 	int	(*set_usb2_hw_lpm)(struct usb_hcd *, struct usb_device *, int);
+	int	(*update_uas_device)(struct usb_hcd *, struct usb_device *, int);
+	void	(*stop_endpoint)(struct usb_hcd *, struct usb_device *,
+				struct usb_host_endpoint *);
 };
 
 extern int usb_hcd_link_urb_to_ep(struct usb_hcd *hcd, struct urb *urb);

@@ -1154,6 +1154,11 @@ void usb_disable_device(struct usb_device *dev, int skip_ep0)
 		for (i = 0; i < dev->actconfig->desc.bNumInterfaces; i++)
 			dev->actconfig->interface[i]->unregistering = 1;
 
+		for (i = skip_ep0; i < 16; ++i) {
+			usb_disable_endpoint(dev, i, false);
+			usb_disable_endpoint(dev, i + USB_DIR_IN, false);
+		}
+
 		for (i = 0; i < dev->actconfig->desc.bNumInterfaces; i++) {
 			struct usb_interface	*interface;
 
