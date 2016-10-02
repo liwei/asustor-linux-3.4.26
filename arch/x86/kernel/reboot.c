@@ -20,6 +20,10 @@
 #include <asm/virtext.h>
 #include <asm/cpu.h>
 #include <asm/nmi.h>
+#ifdef CONFIG_ARCH_GEN3
+#include <linux/pci.h>
+#include <linux/punit_reboot_sync.h>
+#endif
 
 #ifdef CONFIG_X86_32
 # include <linux/ctype.h>
@@ -569,6 +573,11 @@ static void native_machine_emergency_restart(void)
 	int i;
 	int attempt = 0;
 	int orig_reboot_type = reboot_type;
+#ifdef CONFIG_ARCH_GEN3
+	int id;
+
+	intelce_get_soc_info(&id, NULL);
+#endif
 
 	if (reboot_emergency)
 		emergency_vmx_disable_all();
@@ -584,10 +593,29 @@ static void native_machine_emergency_restart(void)
 		case BOOT_KBD:
 			mach_reboot_fixups(); /* for board specific fixups */
 
+
 			for (i = 0; i < 10; i++) {
+/*
+ * The following code is for Intel Media SOC Gen3 base support.
+*/
+			#ifdef CONFIG_ARCH_GEN3
+/*
+ * Intel Media SOC Gen3 uses this specific method to reboot.
+*/
+				switch (id) {
+					case CE2600_SOC_DEVICE_ID:
+						/* Trigger cold boot for "reboot" linux command for CE2600 platform */
+						p_unit_reset_soc();
+						break;
+					default:
+						outb(0x2, 0xcf9);
+						break;
+				}
+			#else
 				kb_wait();
 				udelay(50);
 				outb(0xfe, 0x64); /* pulse reset low */
+			#endif
 				udelay(50);
 			}
 			if (attempt == 0 && orig_reboot_type == BOOT_ACPI) {
@@ -716,6 +744,19 @@ static void native_machine_halt(void)
 
 static void native_machine_power_off(void)
 {
+/*
+ * The following code is for Intel Media SOC Gen3 base support.
+*/
+#ifdef CONFIG_ARCH_GEN3
+/*
+ * Intel Media SOC Gen3 uses this specific way to power off.
+*/
+	machine_shutdown();
+	while(1) {
+		outb(0x4, 0xcf9);
+		udelay(50);
+	}
+#else
 	if (pm_power_off) {
 		if (!reboot_force)
 			machine_shutdown();
@@ -723,6 +764,7 @@ static void native_machine_power_off(void)
 	}
 	/* a fallback in case there is no PM info available */
 	tboot_shutdown(TB_SHUTDOWN_HALT);
+#endif
 }
 
 struct machine_ops machine_ops = {

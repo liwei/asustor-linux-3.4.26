@@ -47,6 +47,11 @@
 #include "accommon.h"
 #include <linux/module.h>
 
+#ifdef CONFIG_ARCH_GEN3
+#include <linux/pci.h>
+#include <linux/delay.h>
+#endif
+
 #define _COMPONENT          ACPI_HARDWARE
 ACPI_MODULE_NAME("hwsleep")
 
@@ -72,8 +77,14 @@ acpi_status acpi_hw_legacy_sleep(u8 sleep_state, u8 flags)
 	u32 pm1b_control;
 	u32 in_value;
 	acpi_status status;
+#ifdef CONFIG_ARCH_GEN3
+	unsigned int id;
+#endif
 
 	ACPI_FUNCTION_TRACE(hw_legacy_sleep);
+#ifdef CONFIG_ARCH_GEN3
+       intelce_get_soc_info(&id, NULL);
+#endif
 
 	sleep_type_reg_info =
 	    acpi_hw_get_bit_register_info(ACPI_BITREG_SLEEP_TYPE);
@@ -145,12 +156,16 @@ acpi_status acpi_hw_legacy_sleep(u8 sleep_state, u8 flags)
 	 */
 
 	/* Write #1: write the SLP_TYP data to the PM1 Control registers */
-
-	status = acpi_hw_write_pm1_control(pm1a_control, pm1b_control);
-	if (ACPI_FAILURE(status)) {
-		return_ACPI_STATUS(status);
+#ifdef CONFIG_ARCH_GEN3
+	if (CE2600_SOC_DEVICE_ID != id) {
+#endif
+		status = acpi_hw_write_pm1_control(pm1a_control, pm1b_control);
+		if (ACPI_FAILURE(status)) {
+			return_ACPI_STATUS(status);
+		}
+#ifdef CONFIG_ARCH_GEN3
 	}
-
+#endif
 	/* Insert the sleep enable (SLP_EN) bit */
 
 	pm1a_control |= sleep_enable_reg_info->access_bit_mask;
@@ -203,6 +218,12 @@ acpi_status acpi_hw_legacy_sleep(u8 sleep_state, u8 flags)
 		if (ACPI_FAILURE(status)) {
 			return_ACPI_STATUS(status);
 		}
+#ifdef CONFIG_ARCH_GEN3
+		if (CE2600_SOC_DEVICE_ID == id) {
+			mdelay(5);
+			break;
+		}
+#endif
 
 	} while (!in_value);
 

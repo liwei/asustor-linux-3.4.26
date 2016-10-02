@@ -19,6 +19,7 @@
 #include <linux/acpi.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
+#include <linux/pci.h>
 
 #include <asm/io.h>
 
@@ -449,6 +450,7 @@ static int acpi_suspend_enter(suspend_state_t pm_state)
 	acpi_status status = AE_OK;
 	u32 acpi_state = acpi_target_sleep_state;
 	int error;
+	unsigned int id;
 
 	ACPI_FLUSH_CPU_CACHE();
 
@@ -466,8 +468,12 @@ static int acpi_suspend_enter(suspend_state_t pm_state)
 		break;
 	}
 
+	intelce_get_soc_info(&id, NULL);
 	/* This violates the spec but is required for bug compatibility. */
-	acpi_write_bit_register(ACPI_BITREG_SCI_ENABLE, 1);
+	if (CE2600_SOC_DEVICE_ID != id) {
+		acpi_write_bit_register(ACPI_BITREG_SCI_ENABLE, 1);
+	}
+
 
 	/* Reprogram control registers and execute _BFS */
 	acpi_leave_sleep_state_prep(acpi_state, wake_sleep_flags);
