@@ -120,6 +120,13 @@ config MTD_SST25L
 	  Set up your spi devices with the right board-specific platform data,
 	  if you want to specify device partitioning.
 
+config MTD_NMYX25
+	tristate "Support N25Q256 M25P32 SPI Flash chips"
+	depends on SPI_MASTER && HW_MUTEXES
+	help
+	  This enables access to the N25Q256 AND M25P32 SPI flash chips, used
+	  for program and data storage.
+
 config MTD_SLRAM
 	tristate "Uncached system RAM"
 	help
