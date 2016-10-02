@@ -111,4 +111,14 @@ config UIO_PRUSS
 	  To compile this driver as a module, choose M here: the module
 	  will be called uio_pruss.
 
+config UIO_PCI_CE2600
+	tristate "Intel CE2600 PCI devices "
+	depends on PCI
+	default n
+	help
+	  Driver for CE2600 PCI MoCA and L2SW devices.  This
+	  driver requires a userspace component that recognizes and
+	  loads devices.
+
+
 endif
