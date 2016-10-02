@@ -484,18 +484,37 @@ static void spi_match_master_to_boardinfo(struct spi_master *master,
  * The board info passed can safely be __initdata ... but be careful of
  * any embedded pointers (platform_data, etc), they're copied as-is.
  */
+#ifdef CONFIG_GEN3_SPI
+int
+#else
 int __devinit
+#endif
 spi_register_board_info(struct spi_board_info const *info, unsigned n)
 {
-	struct boardinfo *bi;
+	struct boardinfo *bi, *temp;
 	int i;
 
 	bi = kzalloc(n * sizeof(*bi), GFP_KERNEL);
 	if (!bi)
 		return -ENOMEM;
 
-	for (i = 0; i < n; i++, bi++, info++) {
+	for (i = 0; i < n; i++, info++) {
 		struct spi_master *master;
+
+		bi = kzalloc(sizeof(*bi), GFP_KERNEL);
+		if (!bi) {
+			for( --i, --info; i >=0; i--, info--)
+			mutex_lock(&board_lock);
+			list_for_each_entry_safe(bi, temp, &board_list, list) {
+				if (!memcmp(&bi->board_info, info, sizeof(*info))) {
+					list_del(&bi->list);
+					kfree(bi);
+					break;
+				}
+			}
+			mutex_unlock(&board_lock);
+			return -ENOMEM;
+		}
 
 		memcpy(&bi->board_info, info, sizeof(*info));
 		mutex_lock(&board_lock);
@@ -507,6 +526,30 @@ spi_register_board_info(struct spi_board_info const *info, unsigned n)
 
 	return 0;
 }
+#ifdef CONFIG_GEN3_SPI
+EXPORT_SYMBOL_GPL(spi_register_board_info);
+
+int spi_unregister_board_info(struct spi_board_info  *info, unsigned n)
+{
+	struct boardinfo        *bi,*temp;
+	int i;
+
+	for (i = 0; i < n; i++, info++) {
+		mutex_lock(&board_lock);
+		list_for_each_entry_safe(bi, temp, &board_list, list) {
+			if (!memcmp(&bi->board_info, info, sizeof(*info))) {
+				list_del(&bi->list);
+				kfree(bi);
+				break;
+			}
+		}
+		mutex_unlock(&board_lock);
+	}
+	return 0;
+}
+
+EXPORT_SYMBOL_GPL(spi_unregister_board_info);
+#endif
 
 /*-------------------------------------------------------------------------*/
 

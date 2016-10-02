@@ -104,6 +104,28 @@
 #define SSCR1_TxTresh(x) (((x) - 1) << 6) /* level [1..4] */
 #define SSCR1_RFT	(0x00000c00)	/* Receive FIFO Threshold (mask) */
 #define SSCR1_RxTresh(x) (((x) - 1) << 10) /* level [1..4] */
+
+/* CE5X00 SSCR0 bit definition */
+#define CE5X00_SSCR0_DSS	((1<<5)-1)	/* Data Size Select (mask) */
+#define CE5X00_SSCR0_DataSize(x)  ((x) - 1)	/* Data Size Select [4..32] */
+#define CE5X00_SSCR0_FRF	(((1<<2)-1) << 5)	/* FRame Format (mask) */
+#define CE5X00_SSCR0_Motorola	(0x0 << 5)	/* Motorola's Serial Peripheral Interface (SPI) */
+#define CE5X00_SSCR0_TI	(0x1 << 5)	/* Texas Instruments' Synchronous Serial Protocol (SSP) */
+#define CE5X00_SSCR0_National	(0x2 << 5)	/* National Microwire */
+
+#define RX_THRESH_CE5X00_DFLT	16
+#define TX_THRESH_CE5X00_DFLT	16
+
+#define CE5X00_SSSR_TFL_MASK	(0x1F << 8)	/* Transmit FIFO Level mask */
+#define CE5X00_SSSR_RFL_MASK	(0x1F << 13)	/* Receive FIFO Level mask */
+
+#define CE5X00_SSCR1_TFT	(((1<<5)-1) << 6)	/* Transmit FIFO Threshold (mask) */
+#define CE5X00_SSCR1_TxTresh(x) (((x) - 1) << 6) /* level [1..32] */
+#define CE5X00_SSCR1_RFT	(((1<<5)-1) << 11)	/* Receive FIFO Threshold (mask) */
+#define CE5X00_SSCR1_RxTresh(x) (((x) - 1) << 11) /* level [1..32] */
+#define CE5X00_SSCR1_STRF       (1 << 17)	/* Select FIFO or EFWR */
+#define CE5X00_SSCR1_EFWR	(1 << 16)	/* Enable FIFO Write/Read */
+
 #endif
 
 /* extra bits in PXA255, PXA26x and PXA27x SSP ports */
@@ -162,6 +184,7 @@ enum pxa_ssp_type {
 	PXA27x_SSP,
 	PXA168_SSP,
 	CE4100_SSP,
+	CE5X00_SSP,
 };
 
 struct ssp_device {
