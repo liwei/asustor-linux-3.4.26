@@ -114,6 +114,10 @@
 #include <asm/alternative.h>
 #include <asm/prom.h>
 
+#ifdef CONFIG_ARCH_GEN3
+extern int set_gmac_phy_mode(uint32_t phy_mode);
+#endif
+
 /*
  * end_pfn only includes RAM, while max_pfn_mapped includes all e820 entries.
  * The direct mapping extends to max_pfn_mapped, so that we can directly access
